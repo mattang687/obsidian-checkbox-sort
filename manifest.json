@@ -1,7 +1,7 @@
 {
-	"id": "obsidian-checkbox-sort",
-	"name": "Obsidian Checkbox Sort",
-	"version": "0.1.0",
+	"id": "checkbox-sort",
+	"name": "Checkbox Sort",
+	"version": "0.1.1",
 	"minAppVersion": "0.15.0",
 	"description": "Automatically moves completed checkboxes to the end of the list",
 	"author": "mattang687",
