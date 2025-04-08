@@ -4,10 +4,12 @@ import { Extension } from '@codemirror/state';
 
 interface CheckboxSortSettings {
 	enableGlobalCheckboxSort: boolean;
+	debugMode: boolean;
 }
 
 const DEFAULT_SETTINGS: CheckboxSortSettings = {
-	enableGlobalCheckboxSort: true // Default to enabled
+	enableGlobalCheckboxSort: true, // Default to enabled
+	debugMode: false // Default disabled
 }
 
 function checkboxClickHandlerExtension(onClick: (lineNumber: number) => void): Extension {
@@ -43,9 +45,13 @@ function checkboxClickHandlerExtension(onClick: (lineNumber: number) => void): E
 export default class ObsidianCheckboxSort extends Plugin {
     settings!: CheckboxSortSettings;
 
-    async onload() {
-        console.log('Loading Checkbox Sort Plugin');
+    debugLog(message: any, ...optionalParams: any[]) {
+        if (this.settings.debugMode) {
+            console.debug(message, ...optionalParams);
+        }
+    }
 
+    async onload() {
         // Load settings
         await this.loadSettings();
 
@@ -64,7 +70,7 @@ export default class ObsidianCheckboxSort extends Plugin {
         });
         try {
             this.registerEditorExtension(extension);
-            console.log("Checkbox Sort editor extension registered successfully.");
+            this.debugLog("Checkbox Sort editor extension registered successfully.");
         } catch (e) {
             console.error("Failed to register Checkbox Sort editor extension:", e);
         }
@@ -101,7 +107,7 @@ export default class ObsidianCheckboxSort extends Plugin {
                  settingSource = "File Frontmatter";
             }
         }
-        console.debug(`Starting effective setting based on Global/Frontmatter: ${fileLevelSortingEnabled} (Source: ${settingSource})`);
+        this.debugLog(`Starting effective setting based on Global/Frontmatter: ${fileLevelSortingEnabled} (Source: ${settingSource})`);
 
         // --- Now, check for List Marker Override ---
         // Need to find blockStartLine *before* this check
@@ -121,7 +127,7 @@ export default class ObsidianCheckboxSort extends Plugin {
             if (!listItemRegex.test(line)) break;
             if (indent === currentIndent) { blockStartLine = i; } else if (indent < currentIndent) { break; }
         }
-        console.debug(`Peer block starts at line: ${blockStartLine}. Scanning for list marker...`);
+        this.debugLog(`Peer block starts at line: ${blockStartLine}. Scanning for list marker...`);
 
 
         // 2. Scan for List Marker Override (Scan upwards from clicked line until marker or top)
@@ -130,7 +136,7 @@ export default class ObsidianCheckboxSort extends Plugin {
         let listMarkerFound: boolean | null = null;
         let foundMarkerLine = -1;
 
-        console.debug(`Scanning upwards from line ${clickedLineNumber - 1} for list marker...`);
+        this.debugLog(`Scanning upwards from line ${clickedLineNumber - 1} for list marker...`);
         for (let scanLineNum = clickedLineNumber - 1; scanLineNum >= 0; scanLineNum--) {
             const lineContent = editor.getLine(scanLineNum).trim();
             
@@ -139,21 +145,21 @@ export default class ObsidianCheckboxSort extends Plugin {
                 listMarkerFound = true;
                 settingSource = "List Marker (Enable)";
                 foundMarkerLine = scanLineNum;
-                console.debug(`Found enable marker at line ${scanLineNum}`);
+                this.debugLog(`Found enable marker at line ${scanLineNum}`);
                 break; // Closest marker wins
             }
             if (lineContent.includes(disableMarker)) {
                 listMarkerFound = false;
                 settingSource = "List Marker (Disable)";
                 foundMarkerLine = scanLineNum;
-                console.debug(`Found disable marker at line ${scanLineNum}`);
+                this.debugLog(`Found disable marker at line ${scanLineNum}`);
                 break; // Closest marker wins
             }
 
             // Stop scanning if we hit non-list content - markers only apply to subsequent list items
             // in the same list structure. A paragraph/heading breaks the list context.
             if (!listItemRegex.test(lineContent)) {
-                console.debug(`Scan hit non-list item line at ${scanLineNum}, stopping marker search.`);
+                this.debugLog(`Scan hit non-list item line at ${scanLineNum}, stopping marker search.`);
                 break; // Stop scanning upwards
             }
         }
@@ -161,22 +167,22 @@ export default class ObsidianCheckboxSort extends Plugin {
         // 3. Apply List Marker Override if found
         if (listMarkerFound !== null) {
             effectiveSortingEnabled = listMarkerFound;
-            console.debug(`List marker found at line ${foundMarkerLine}. Effective sorting overridden to: ${effectiveSortingEnabled} (Source: ${settingSource})`);
+            this.debugLog(`List marker found at line ${foundMarkerLine}. Effective sorting overridden to: ${effectiveSortingEnabled} (Source: ${settingSource})`);
         } else {
-            console.debug(`No list marker found above line ${clickedLineNumber}. Effective sorting remains: ${effectiveSortingEnabled} (Source: ${settingSource})`);
+            this.debugLog(`No list marker found above line ${clickedLineNumber}. Effective sorting remains: ${effectiveSortingEnabled} (Source: ${settingSource})`);
         }
 
 
         // --- Final Effective Setting Check ---
         if (!effectiveSortingEnabled) {
-            console.debug(`Checkbox sorting disabled by ${settingSource} setting. Aborting sort logic.`);
+            this.debugLog(`Checkbox sorting disabled by ${settingSource} setting. Aborting sort logic.`);
             // Perform basic tick/untick in place? Let's skip for now.
             return;
         }
         // --- End Effective Setting Check ---
 
 
-        console.debug(`sortCheckboxesAroundClick: Proceeding with sort for line: ${clickedLineNumber}`);
+        this.debugLog(`sortCheckboxesAroundClick: Proceeding with sort for line: ${clickedLineNumber}`);
         try {
             const clickedLineText = editor.getLine(clickedLineNumber);
             const currentIndent = this.getIndentationLevel(clickedLineText);
@@ -188,15 +194,13 @@ export default class ObsidianCheckboxSort extends Plugin {
 
             const isCurrentlyTicked = tickedCheckboxRegex.test(clickedLineText);
             const isNowTicked = !isCurrentlyTicked;
-            // Log moved earlier: console.debug(`Click detected... `);
-
 
             if (!listItemRegex.test(clickedLineText)) {
                 console.warn(`Line ${clickedLineNumber} is not a list item. Aborting action.`);
                 return;
             }
 
-            console.debug(`Click detected on line ${clickedLineNumber}. Current state: ${isCurrentlyTicked ? 'Ticked' : 'Unticked'}. New state: ${isNowTicked ? 'Ticked' : 'Unticked'}. Indent: ${currentIndent}`);
+            this.debugLog(`Click detected on line ${clickedLineNumber}. Current state: ${isCurrentlyTicked ? 'Ticked' : 'Unticked'}. New state: ${isNowTicked ? 'Ticked' : 'Unticked'}. Indent: ${currentIndent}`);
 
 
             // --- Step 1: Find Peer Block Boundaries (Peers at same indent) ---
@@ -218,7 +222,7 @@ export default class ObsidianCheckboxSort extends Plugin {
                 if (!listItemRegex.test(line)) break;
                 if (indent === currentIndent) { blockEndLine = i; } else if (indent < currentIndent) { break; }
             }
-            console.debug(`Peer block boundaries (inclusive): ${blockStartLine} to ${blockEndLine}`);
+            this.debugLog(`Peer block boundaries (inclusive): ${blockStartLine} to ${blockEndLine}`);
 
             // Step 2: Iterate through PEERS, collect item trees, sort into lists
             const untickedItemsData: { text: string, originalLine: number }[] = [];
@@ -243,7 +247,7 @@ export default class ObsidianCheckboxSort extends Plugin {
                      if (!listItemRegex.test(descLineText) || descIndent <= currentPeerIndent) { break; }
                      peerTreeEndLine = j;
                  }
-                console.debug(`Peer at ${i}: Tree detected from line ${i} to ${peerTreeEndLine}`);
+                this.debugLog(`Peer at ${i}: Tree detected from line ${i} to ${peerTreeEndLine}`);
 
                 // Process each peer's entire subtree (nested items) as a single unit
                 // to preserve hierarchical relationships during sorting
@@ -266,7 +270,7 @@ export default class ObsidianCheckboxSort extends Plugin {
                         if (isNowTicked) lines[0] = lines[0].replace('[ ]', '[x]');
                         else lines[0] = lines[0].replace('[x]', '[ ]');
                         peerTreeText = lines.join('\n');
-                        console.debug(`Updated text for clicked item (lines ${i}-${peerTreeEndLine}) for new state: ${isNowTicked?'Ticked':'Unticked'}`);
+                        this.debugLog(`Updated text for clicked item (lines ${i}-${peerTreeEndLine}) for new state: ${isNowTicked?'Ticked':'Unticked'}`);
                     }
                 } else { // Not the clicked item, use its current state
                     isPeerTickedForSorting = tickedCheckboxRegex.test(currentPeerLineText);
@@ -298,7 +302,7 @@ export default class ObsidianCheckboxSort extends Plugin {
                  if (!listItemRegex.test(line) || indent < currentIndent) break;
                  overallBlockEndLine = i;
              }
-             console.debug(`Entire structure to replace spans ${blockStartLine} to ${overallBlockEndLine}`);
+             this.debugLog(`Entire structure to replace spans ${blockStartLine} to ${overallBlockEndLine}`);
 
              const deleteFrom = { line: blockStartLine, ch: 0 };
              const deleteTo = (overallBlockEndLine === totalLines - 1)
@@ -318,12 +322,12 @@ export default class ObsidianCheckboxSort extends Plugin {
             // --- Step 4: Perform Transaction if needed ---
              const originalBlockText = editor.getRange(deleteFrom, deleteTo);
              if(textToInsert.trim() === originalBlockText.trim()) {
-                  console.log("No changes needed.");
+                  this.debugLog("No changes needed.");
                   return;
              }
-            console.debug(`Replacing lines ${blockStartLine}-${overallBlockEndLine} with new sorted block.`);
+            this.debugLog(`Replacing lines ${blockStartLine}-${overallBlockEndLine} with new sorted block.`);
             editor.transaction({ changes: [{ from: deleteFrom, to: deleteTo, text: textToInsert }] });
-            console.log(`Sorted checkbox block containing original line ${clickedLineNumber}.`);
+            this.debugLog(`Sorted checkbox block containing original line ${clickedLineNumber}.`);
 
         } catch(e) {
             console.error(`sortCheckboxesAroundClick: Error processing line ${clickedLineNumber}:`, e);
@@ -337,7 +341,6 @@ export default class ObsidianCheckboxSort extends Plugin {
     }
 
     onunload() {
-        console.log('Unloading Checkbox Sort Plugin');
         // No specific setting cleanup needed here
     }
 }
@@ -358,12 +361,22 @@ class CheckboxSortSettingTab extends PluginSettingTab {
 		containerEl.createEl('h2', {text: 'Checkbox Sorter Settings'});
 
 		new Setting(containerEl)
+			.setName('Enable debug mode')
+			.setDesc('Show detailed debugging information in console')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.debugMode)
+				.onChange(async (value) => {
+					this.plugin.settings.debugMode = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName('Enable Checkbox Sorting Globally')
 			.setDesc('If enabled, clicking checkboxes will sort them within their peer group (unticked first, then ticked). This can be overridden by file frontmatter or list markers later.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableGlobalCheckboxSort)
 				.onChange(async (value) => {
-					console.log('Global sort setting changed:', value);
+					this.plugin.debugLog('Global sort setting changed:', value);
 					this.plugin.settings.enableGlobalCheckboxSort = value;
 					await this.plugin.saveSettings();
 				}));
