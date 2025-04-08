@@ -26,7 +26,7 @@ Automatically moves completed checkboxes to the bottom of their list group when 
 
 ## Installation ⬇️
 1. Open Obsidian → Settings → Community plugins
-2. Click "Browse" and search "Checkbox Sorter"
+2. Click "Browse" and search "Obsidian Checkbox Sort"
 3. Install and enable plugin
 4. (Optional) Configure default behavior in plugin settings
 
