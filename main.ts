@@ -358,7 +358,16 @@ class CheckboxSortSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl('h2', {text: 'Checkbox Sorter Settings'});
+		new Setting(containerEl)
+			.setName('Enable checkbox sorting globally')
+			.setDesc('If enabled, clicking checkboxes will sort them within their peer group (unticked first, then ticked). This can be overridden by file frontmatter or list markers later.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.enableGlobalCheckboxSort)
+				.onChange(async (value) => {
+					this.plugin.debugLog('Global sort setting changed:', value);
+					this.plugin.settings.enableGlobalCheckboxSort = value;
+					await this.plugin.saveSettings();
+				}));
 
 		new Setting(containerEl)
 			.setName('Enable debug mode')
@@ -367,17 +376,6 @@ class CheckboxSortSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.debugMode)
 				.onChange(async (value) => {
 					this.plugin.settings.debugMode = value;
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			.setName('Enable Checkbox Sorting Globally')
-			.setDesc('If enabled, clicking checkboxes will sort them within their peer group (unticked first, then ticked). This can be overridden by file frontmatter or list markers later.')
-			.addToggle(toggle => toggle
-				.setValue(this.plugin.settings.enableGlobalCheckboxSort)
-				.onChange(async (value) => {
-					this.plugin.debugLog('Global sort setting changed:', value);
-					this.plugin.settings.enableGlobalCheckboxSort = value;
 					await this.plugin.saveSettings();
 				}));
 	}

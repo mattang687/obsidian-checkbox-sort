@@ -1,4 +1,4 @@
-# Obsidian Checkbox Sorter 🔄
+# Checkbox Sorter 🔄
 
 Automatically moves completed checkboxes to the bottom of their list group when toggled. Preserves nested list structure while sorting.
 
