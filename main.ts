@@ -281,6 +281,15 @@ export default class ObsidianCheckboxSort extends Plugin {
                 if (isPeerTickedForSorting) {
                     tickedItemsData.push(itemData);
                 } else {
+					// If this is the last item, it doesn't have a newline, and the first moved checkbox also doesn't have a newline - add a newline to this line.
+			        if (
+			          i == blockEndLine &&
+					  !itemData.text.endsWith("\n") &&
+			          tickedItemsData.length > 0 &&
+			          !tickedItemsData[0].text.startsWith("\n")
+			        ) {
+			          itemData.text += "\n";
+			        }
                     untickedItemsData.push(itemData);
                 }
 
