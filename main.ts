@@ -1,5 +1,5 @@
 import { Plugin, MarkdownView, PluginSettingTab, Setting, App } from "obsidian";
-import { ViewPlugin } from "@codemirror/view";
+import { ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { Extension } from "@codemirror/state";
 
 interface CheckboxSortSettings {
@@ -12,36 +12,50 @@ const DEFAULT_SETTINGS: CheckboxSortSettings = {
 	debugMode: false, // Default disabled
 };
 
-function checkboxClickHandlerExtension(
-	onClick: (lineNumber: number) => void
+function checkboxChangeHandlerExtension(
+	onToggle: (lineNumber: number) => void
 ): Extension {
-	return ViewPlugin.define((view) => {
-		const handleClick = (event: MouseEvent) => {
-			const target = event.target as HTMLElement;
-			if (
-				target instanceof HTMLInputElement &&
-				target.type === "checkbox" &&
-				target.classList.contains("task-list-item-checkbox")
-			) {
-				const pos = view.posAtCoords({
-					x: event.clientX,
-					y: event.clientY,
-				});
-				if (pos !== null) {
-					const line = view.state.doc.lineAt(pos);
-					const lineNumber = line.number - 1; // 0-based
-					try {
-						onClick(lineNumber);
-					} catch (e) {
-						console.error("Error executing onClick callback:", e);
-					}
-				}
-			}
-		};
-		view.dom.addEventListener("click", handleClick);
+	return ViewPlugin.define((_view) => {
 		return {
-			destroy() {
-				view.dom.removeEventListener("click", handleClick);
+			update(update: ViewUpdate) {
+				if (!update.docChanged) return;
+
+				let toggledLine: number | null = null;
+
+				update.changes.iterChanges((fromA, toA, fromB, _toB, _inserted) => {
+					const fromLine = update.startState.doc.lineAt(fromA);
+
+					// Skip changes that span multiple lines — the sort bulk-replaces
+					// the whole block; a checkbox toggle always stays within one line.
+					// +1 allows for the trailing newline character.
+					if (toA > fromLine.to + 1) return;
+
+					const oldLineText = fromLine.text;
+					const newLine = update.state.doc.lineAt(fromB);
+					const newLineText = newLine.text;
+
+					const wasUnchecked = /^\s*[-*+]\s+\[ \]/.test(oldLineText);
+					const wasChecked = /^\s*[-*+]\s+\[x\]/.test(oldLineText);
+					const isNowChecked = /^\s*[-*+]\s+\[x\]/.test(newLineText);
+					const isNowUnchecked = /^\s*[-*+]\s+\[ \]/.test(newLineText);
+
+					if ((wasUnchecked && isNowChecked) || (wasChecked && isNowUnchecked)) {
+						toggledLine = newLine.number - 1; // 0-based
+					}
+				});
+
+				if (toggledLine !== null) {
+					const lineNum = toggledLine;
+					// Defer so we're outside CodeMirror's update cycle before dispatching
+					// a transaction — calling view.dispatch from within update() is not allowed.
+					setTimeout(() => {
+						try {
+							onToggle(lineNum);
+						} catch (e) {
+							console.error("Error executing onToggle callback:", e);
+						}
+					}, 0);
+				}
 			},
 		};
 	});
@@ -64,15 +78,13 @@ export default class ObsidianCheckboxSort extends Plugin {
 		this.addSettingTab(new CheckboxSortSettingTab(this.app, this));
 
 		// Register the editor extension (remains the same)
-		const extension = checkboxClickHandlerExtension((lineNumber) => {
+		const extension = checkboxChangeHandlerExtension((lineNumber) => {
 			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-			// Pass the whole view object now to access file context
 			if (view && view.file) {
-				// Ensure view and file exist
 				this.sortCheckboxesAroundClick(view, lineNumber);
 			} else {
 				console.error(
-					"CALLBACK: Could not get MarkdownView to process checkbox click."
+					"CALLBACK: Could not get MarkdownView to process checkbox toggle."
 				);
 			}
 		});
@@ -242,7 +254,9 @@ export default class ObsidianCheckboxSort extends Plugin {
 			const tickedCheckboxRegex = /^\s*[-*+]\s+\[x\]/;
 
 			const isCurrentlyTicked = tickedCheckboxRegex.test(clickedLineText);
-			const isNowTicked = !isCurrentlyTicked;
+			// The toggle is already applied before this handler runs (change-based detection),
+			// so the current document state IS the intended final state.
+			const isNowTicked = isCurrentlyTicked;
 
 			if (!listItemRegex.test(clickedLineText)) {
 				console.warn(
@@ -336,28 +350,11 @@ export default class ObsidianCheckboxSort extends Plugin {
 						editor.getLine(k) + (k === totalLines - 1 ? "" : "\n");
 				}
 
-				// Use inverse of current state for sorting because the click hasn't
-				// been processed by Obsidian yet - we're intercepting the raw event
+				// The toggle is already reflected in the document; read current state for all items.
 				let isPeerTickedForSorting: boolean;
-				// Handle clicked item first - its state is inverted from current rendering
-				// because we're intercepting the click before Obsidian updates it
 				if (i === clickedLineNumber) {
 					isPeerTickedForSorting = isNowTicked;
-					// Modify the first line of the extracted text block to reflect the new state
-					const lines = peerTreeText.split("\n");
-					if (lines.length > 0) {
-						if (isNowTicked)
-							lines[0] = lines[0].replace("[ ]", "[x]");
-						else lines[0] = lines[0].replace("[x]", "[ ]");
-						peerTreeText = lines.join("\n");
-						this.debugLog(
-							`Updated text for clicked item (lines ${i}-${peerTreeEndLine}) for new state: ${
-								isNowTicked ? "Ticked" : "Unticked"
-							}`
-						);
-					}
 				} else {
-					// Not the clicked item, use its current state
 					isPeerTickedForSorting =
 						tickedCheckboxRegex.test(currentPeerLineText);
 				}
