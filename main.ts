@@ -65,16 +65,26 @@ export default class ObsidianCheckboxSort extends Plugin {
 
 		// Register the editor extension (remains the same)
 		const extension = checkboxClickHandlerExtension((lineNumber) => {
-			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-			// Pass the whole view object now to access file context
-			if (view && view.file) {
-				// Ensure view and file exist
-				this.sortCheckboxesAroundClick(view, lineNumber);
-			} else {
-				console.error(
-					"CALLBACK: Could not get MarkdownView to process checkbox click."
-				);
-			}
+			// Defer to the next tick: Obsidian's own click handling toggles the
+			// checkbox in the document as part of this same click event. If we
+			// sort synchronously, our editor.transaction can race with that
+			// toggle and end up applying against a document Obsidian hasn't
+			// (or has already) mutated - see the first-item toggle bug where
+			// the wrong line ends up ticked. Deferring via setTimeout(0) lets
+			// the current click event (and Obsidian's own handler, whichever
+			// order it's attached in) fully finish first.
+			setTimeout(() => {
+				const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+				// Pass the whole view object now to access file context
+				if (view && view.file) {
+					// Ensure view and file exist
+					this.sortCheckboxesAroundClick(view, lineNumber);
+				} else {
+					console.error(
+						"CALLBACK: Could not get MarkdownView to process checkbox click."
+					);
+				}
+			}, 0);
 		});
 		try {
 			this.registerEditorExtension(extension);
@@ -241,9 +251,6 @@ export default class ObsidianCheckboxSort extends Plugin {
 			// --- Need remaining variables for the logic block ---
 			const tickedCheckboxRegex = /^\s*[-*+]\s+\[x\]/;
 
-			const isCurrentlyTicked = tickedCheckboxRegex.test(clickedLineText);
-			const isNowTicked = !isCurrentlyTicked;
-
 			if (!listItemRegex.test(clickedLineText)) {
 				console.warn(
 					`Line ${clickedLineNumber} is not a list item. Aborting action.`
@@ -251,11 +258,14 @@ export default class ObsidianCheckboxSort extends Plugin {
 				return;
 			}
 
+			// The sort runs on the next tick (see onload), so Obsidian's own
+			// checkbox toggle has already been applied to the document by now -
+			// clickedLineText already reflects the real post-click state.
+			const isCurrentlyTicked = tickedCheckboxRegex.test(clickedLineText);
+
 			this.debugLog(
-				`Click detected on line ${clickedLineNumber}. Current state: ${
+				`Click detected on line ${clickedLineNumber}. State: ${
 					isCurrentlyTicked ? "Ticked" : "Unticked"
-				}. New state: ${
-					isNowTicked ? "Ticked" : "Unticked"
 				}. Indent: ${currentIndent}`
 			);
 
@@ -336,31 +346,12 @@ export default class ObsidianCheckboxSort extends Plugin {
 						editor.getLine(k) + (k === totalLines - 1 ? "" : "\n");
 				}
 
-				// Use inverse of current state for sorting because the click hasn't
-				// been processed by Obsidian yet - we're intercepting the raw event
-				let isPeerTickedForSorting: boolean;
-				// Handle clicked item first - its state is inverted from current rendering
-				// because we're intercepting the click before Obsidian updates it
-				if (i === clickedLineNumber) {
-					isPeerTickedForSorting = isNowTicked;
-					// Modify the first line of the extracted text block to reflect the new state
-					const lines = peerTreeText.split("\n");
-					if (lines.length > 0) {
-						if (isNowTicked)
-							lines[0] = lines[0].replace("[ ]", "[x]");
-						else lines[0] = lines[0].replace("[x]", "[ ]");
-						peerTreeText = lines.join("\n");
-						this.debugLog(
-							`Updated text for clicked item (lines ${i}-${peerTreeEndLine}) for new state: ${
-								isNowTicked ? "Ticked" : "Unticked"
-							}`
-						);
-					}
-				} else {
-					// Not the clicked item, use its current state
-					isPeerTickedForSorting =
-						tickedCheckboxRegex.test(currentPeerLineText);
-				}
+				// Obsidian's own toggle has already landed in the document by the
+				// time this runs (the sort is deferred to the next tick), so
+				// every peer - including the clicked one - is classified from
+				// its actual current text; no special-casing needed.
+				const isPeerTickedForSorting =
+					tickedCheckboxRegex.test(currentPeerLineText);
 
 				// Add data block to the appropriate list
 				const itemData = { text: peerTreeText, originalLine: i };
