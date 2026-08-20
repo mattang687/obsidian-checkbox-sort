@@ -1,5 +1,5 @@
 import { Plugin, MarkdownView, PluginSettingTab, Setting, App } from "obsidian";
-import { ViewPlugin, ViewUpdate } from "@codemirror/view";
+import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { Extension } from "@codemirror/state";
 
 interface CheckboxSortSettings {
@@ -13,9 +13,9 @@ const DEFAULT_SETTINGS: CheckboxSortSettings = {
 };
 
 function checkboxChangeHandlerExtension(
-	onToggle: (lineNumber: number) => void
+	onToggle: (editorView: EditorView, lineNumber: number) => void
 ): Extension {
-	return ViewPlugin.define((_view) => {
+	return ViewPlugin.define((view) => {
 		return {
 			update(update: ViewUpdate) {
 				if (!update.docChanged) return;
@@ -50,7 +50,7 @@ function checkboxChangeHandlerExtension(
 					// a transaction — calling view.dispatch from within update() is not allowed.
 					setTimeout(() => {
 						try {
-							onToggle(lineNum);
+							onToggle(view, lineNum);
 						} catch (e) {
 							console.error("Error executing onToggle callback:", e);
 						}
@@ -78,16 +78,23 @@ export default class ObsidianCheckboxSort extends Plugin {
 		this.addSettingTab(new CheckboxSortSettingTab(this.app, this));
 
 		// Register the editor extension (remains the same)
-		const extension = checkboxChangeHandlerExtension((lineNumber) => {
-			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (view && view.file) {
-				this.sortCheckboxesAroundClick(view, lineNumber);
-			} else {
-				console.error(
-					"CALLBACK: Could not get MarkdownView to process checkbox toggle."
-				);
+		const extension = checkboxChangeHandlerExtension(
+			(editorView, lineNumber) => {
+				// Editor extensions are registered per editor, so the EditorView
+				// we receive is the exact editor whose document changed. Resolve
+				// its owning MarkdownView for file context instead of guessing via
+				// the workspace's active view, which can be a different pane by the
+				// time the deferred sort runs.
+				const view = this.getOwningMarkdownView(editorView);
+				if (view && view.file) {
+					this.sortCheckboxesAroundClick(view, lineNumber);
+				} else {
+					console.error(
+						"CALLBACK: Could not get MarkdownView to process checkbox toggle."
+					);
+				}
 			}
-		});
+		);
 		try {
 			this.registerEditorExtension(extension);
 			this.debugLog(
@@ -111,6 +118,25 @@ export default class ObsidianCheckboxSort extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	getOwningMarkdownView(editorView: EditorView): MarkdownView | null {
+		let found: MarkdownView | null = null;
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			const view = leaf.view;
+			if (
+				found === null &&
+				view instanceof MarkdownView &&
+				// The Editor implementation wraps its CodeMirror EditorView as `cm`
+				// (not part of the public typings).
+				(view.editor as any).cm === editorView
+			) {
+				found = view;
+			}
+		}
+		// Defensive fallback: keep the old behavior if the owning view cannot
+		// be resolved (e.g. a future Obsidian version changes `editor.cm`).
+		return found ?? this.app.workspace.getActiveViewOfType(MarkdownView);
 	}
 
 	// --- sortCheckboxesAroundClick ---
