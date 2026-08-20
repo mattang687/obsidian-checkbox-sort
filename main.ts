@@ -279,11 +279,6 @@ export default class ObsidianCheckboxSort extends Plugin {
 			// --- Need remaining variables for the logic block ---
 			const tickedCheckboxRegex = /^\s*[-*+]\s+\[x\]/;
 
-			const isCurrentlyTicked = tickedCheckboxRegex.test(clickedLineText);
-			// The toggle is already applied before this handler runs (change-based detection),
-			// so the current document state IS the intended final state.
-			const isNowTicked = isCurrentlyTicked;
-
 			if (!listItemRegex.test(clickedLineText)) {
 				console.warn(
 					`Line ${clickedLineNumber} is not a list item. Aborting action.`
@@ -291,11 +286,14 @@ export default class ObsidianCheckboxSort extends Plugin {
 				return;
 			}
 
+			// The toggle is already reflected in the document before the sort
+			// runs (change-based detection), so clickedLineText already shows
+			// the real post-toggle state.
+			const isCurrentlyTicked = tickedCheckboxRegex.test(clickedLineText);
+
 			this.debugLog(
-				`Click detected on line ${clickedLineNumber}. Current state: ${
+				`Click detected on line ${clickedLineNumber}. State: ${
 					isCurrentlyTicked ? "Ticked" : "Unticked"
-				}. New state: ${
-					isNowTicked ? "Ticked" : "Unticked"
 				}. Indent: ${currentIndent}`
 			);
 
@@ -376,14 +374,11 @@ export default class ObsidianCheckboxSort extends Plugin {
 						editor.getLine(k) + (k === totalLines - 1 ? "" : "\n");
 				}
 
-				// The toggle is already reflected in the document; read current state for all items.
-				let isPeerTickedForSorting: boolean;
-				if (i === clickedLineNumber) {
-					isPeerTickedForSorting = isNowTicked;
-				} else {
-					isPeerTickedForSorting =
-						tickedCheckboxRegex.test(currentPeerLineText);
-				}
+				// The toggle is already reflected in the document, so every peer -
+				// including the toggled one - is classified from its actual current
+				// text; no special-casing needed.
+				const isPeerTickedForSorting =
+					tickedCheckboxRegex.test(currentPeerLineText);
 
 				// Add data block to the appropriate list
 				const itemData = { text: peerTreeText, originalLine: i };
