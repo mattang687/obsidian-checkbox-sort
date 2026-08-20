@@ -1,10 +1,10 @@
 {
 	"id": "checkbox-sort",
 	"name": "Checkbox Sort",
-	"version": "0.1.3",
+	"version": "0.2.0",
 	"minAppVersion": "0.15.0",
 	"description": "Automatically moves completed checkboxes to the end of the list",
 	"author": "mattang687",
-    "authorUrl": "https://github.com/mattang687",
+	"authorUrl": "https://github.com/mattang687",
 	"isDesktopOnly": false
 }
