@@ -454,11 +454,18 @@ export default class ObsidianCheckboxSort extends Plugin {
 			this.debugLog(
 				`Replacing lines ${blockStartLine}-${overallBlockEndLine} with new sorted block.`
 			);
+			// Replacing the block resets the scroll position (the view jumps to the
+			// top, e.g. on iOS), so restore it after the transaction.
+			const scrollInfo = editor.getScrollInfo();
 			editor.transaction({
 				changes: [
 					{ from: deleteFrom, to: deleteTo, text: textToInsert },
 				],
 			});
+			editor.scrollTo(scrollInfo.left, scrollInfo.top);
+			requestAnimationFrame(() =>
+				editor.scrollTo(scrollInfo.left, scrollInfo.top)
+			);
 			this.debugLog(
 				`Sorted checkbox block containing original line ${clickedLineNumber}.`
 			);
